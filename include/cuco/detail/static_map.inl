@@ -234,8 +234,7 @@ std::pair<KeyOut, ValueOut> static_map<Key, Value, Scope, Allocator>::retrieve_a
                         stream);
 
   // Allocate temporary storage
-  auto d_temp_storage =
-    std::allocator_traits<temp_allocator_type>::allocate(temp_allocator, temp_storage_bytes);
+  auto d_temp_storage = temp_allocator.allocate(temp_storage_bytes);
 
   cub::DeviceSelect::If(d_temp_storage,
                         temp_storage_bytes,
@@ -250,6 +249,9 @@ std::pair<KeyOut, ValueOut> static_map<Key, Value, Scope, Allocator>::retrieve_a
   CUCO_CUDA_TRY(
     cudaMemcpyAsync(&h_num_out, d_num_out, sizeof(std::size_t), cudaMemcpyDeviceToHost, stream));
   CUCO_CUDA_TRY(cudaStreamSynchronize(stream));
+
+  // Deallocate temporary storage
+  temp_allocator.deallocate(d_temp_storage, temp_storage_bytes);
 
   return std::make_pair(keys_out + h_num_out, values_out + h_num_out);
 }
