@@ -30,6 +30,11 @@ namespace detail {
 enum class result : int32_t { UNEQUAL = 0, EMPTY = 1, EQUAL = 2 };
 
 /**
+ * @brief Enum of insert results.
+ */
+enum class insert_result : int32_t { CONTINUE = 0, SUCCESS = 1, DUPLICATE = 2 };
+
+/**
  * @brief Equality wrapper.
  *
  * User-provided equality binary callable cannot be used to compared against sentinel value.
@@ -147,9 +152,9 @@ class static_set_ref {
         if (eq_res == detail::result::EMPTY) {
           auto const intra_window_index = thrust::distance(window_slots.begin(), &slot_content);
           switch (attempt_insert((windows() + *probing_iter)->data() + intra_window_index, key)) {
-            case insert_result::CONTINUE: continue;
-            case insert_result::SUCCESS: return true;
-            case insert_result::DUPLICATE: return false;
+            case detail::insert_result::CONTINUE: continue;
+            case detail::insert_result::SUCCESS: return true;
+            case detail::insert_result::DUPLICATE: return false;
           }
         }
       }
@@ -195,11 +200,11 @@ class static_set_ref {
         auto const status =
           (g.thread_rank() == src_lane)
             ? attempt_insert((windows() + *probing_iter)->data() + intra_window_index, key)
-            : insert_result::CONTINUE;
+            : detail::insert_result::CONTINUE;
 
         switch (g.shfl(status, src_lane)) {
-          case insert_result::SUCCESS: return true;
-          case insert_result::DUPLICATE: return false;
+          case detail::insert_result::SUCCESS: return true;
+          case detail::insert_result::DUPLICATE: return false;
           default: continue;
         }
       } else {
@@ -278,9 +283,6 @@ class static_set_ref {
   }
 
  private:
-  /// Insert result enum
-  enum class insert_result : int32_t { CONTINUE = 0, SUCCESS = 1, DUPLICATE = 2 };
-
   /**
    * @brief Inserts the given `key` into the target `slot`.
    *
@@ -288,17 +290,18 @@ class static_set_ref {
    * @param key The key to insert
    * @return An insert result enum indicating the insertion status
    */
-  __device__ inline insert_result attempt_insert(value_type* slot, value_type const& key) noexcept
+  __device__ inline detail::insert_result attempt_insert(value_type* slot,
+                                                         value_type const& key) noexcept
   {
     auto ref      = cuda::atomic_ref<value_type, Scope>{*slot};
     auto expected = empty_key_sentienl_;
     bool result   = ref.compare_exchange_strong(expected, key, cuda::std::memory_order_relaxed);
     if (result) {
-      return insert_result::SUCCESS;
+      return detail::insert_result::SUCCESS;
     } else {
       auto old = expected;
-      return predicate_(old, key) == detail::result::EQUAL ? insert_result::DUPLICATE
-                                                           : insert_result::CONTINUE;
+      return predicate_(old, key) == detail::result::EQUAL ? detail::insert_result::DUPLICATE
+                                                           : detail::insert_result::CONTINUE;
     }
   }
 
