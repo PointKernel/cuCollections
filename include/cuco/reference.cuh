@@ -278,9 +278,17 @@ class static_set_ref {
   }
 
  private:
+  /// Insert result enum
   enum class insert_result : int32_t { CONTINUE = 0, SUCCESS = 1, DUPLICATE = 2 };
 
-  __device__ inline insert_result attempt_insert(value_type* slot, value_type const& key)
+  /**
+   * @brief Inserts the given `key` into the target `slot`.
+   *
+   * @param slot The slot to insert
+   * @param key The key to insert
+   * @return An insert result enum indicating the insertion status
+   */
+  __device__ inline insert_result attempt_insert(value_type* slot, value_type const& key) noexcept
   {
     auto ref      = cuda::atomic_ref<value_type, Scope>{*slot};
     auto expected = empty_key_sentienl_;
