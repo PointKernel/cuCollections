@@ -241,7 +241,7 @@ class aos_storage_ref {
  * @tparam Allocator Type of allocator used for device storage
  */
 template <int WindowSize, typename T, typename Extent, typename Allocator>
-// TODO: aow_storage? arrary of windows
+// TODO: aow_storage? array of windows
 class aos_storage : public storage_base<Extent> {
  public:
   /**
