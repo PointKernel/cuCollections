@@ -56,4 +56,21 @@ struct is_thrust_pair_like
       cuda::std::declval<T>()))>> {
 };
 
+template <typename T, typename = void>
+struct is_extent : cuda::std::false_type {
+};
+
+template <typename T>
+struct is_extent<
+  T,
+  cuda::std::void_t<
+    typename T::value_type,
+    cuda::std::enable_if_t<cuda::std::is_convertible_v<typename T::value_type, std::size_t> and
+                           cuda::std::is_convertible_v<T, std::size_t> and
+                           cuda::std::is_constructible_v<T, std::size_t>>>> : cuda::std::true_type {
+};
+
+template <typename T>
+inline constexpr bool is_extent_v = is_extent<T>::value;
+
 }  // namespace cuco::detail
