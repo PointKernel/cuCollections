@@ -20,6 +20,7 @@
 #include <cuco/detail/common_functors.cuh>
 #include <cuco/detail/common_kernels.cuh>
 #include <cuco/detail/storage/counter_storage.cuh>
+#include <cuco/detail/traits.hpp>
 #include <cuco/detail/utility/cuda.hpp>
 #include <cuco/extent.cuh>
 #include <cuco/probing_scheme.cuh>
@@ -89,8 +90,10 @@ class open_addressing_impl {
   using value_type = Value;  ///< The storage value type, NOT payload type
   /// Extent type
   using extent_type = decltype(make_window_extent<open_addressing_impl>(std::declval<Extent>()));
-  using size_type   = typename extent_type::value_type;  ///< Size type
-  using key_equal   = KeyEqual;                          ///< Key equality comparator type
+  using size_type   = std::conditional_t<cuco::detail::is_extent_v<extent_type>,
+                                       typename extent_type::value_type,
+                                       extent_type>;  ///< Size type
+  using key_equal   = KeyEqual;                         ///< Key equality comparator type
   using storage_type =
     detail::storage<Storage, value_type, extent_type, Allocator>;  ///< Storage type
   using allocator_type = typename storage_type::allocator_type;    ///< Allocator type
