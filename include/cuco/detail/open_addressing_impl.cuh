@@ -91,8 +91,8 @@ class open_addressing_impl {
   /// Extent type
   using extent_type = decltype(make_window_extent<open_addressing_impl>(std::declval<Extent>()));
   using size_type =
-    std::conditional_t<cuco::detail::is_extent_v<extent_type> or
-                         cuco::experimental::detail::is_window_extent_v<extent_type>,
+    std::conditional_t<(cuco::detail::is_extent_v<extent_type> or
+                        cuco::experimental::detail::is_window_extent_v<extent_type>),
                        typename extent_type::value_type,
                        extent_type>;  ///< Size type
   using key_equal = KeyEqual;         ///< Key equality comparator type

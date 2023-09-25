@@ -26,19 +26,35 @@ TEST_CASE("Size computation", "")
 {
   constexpr std::size_t num_keys{400};
 
-  cuco::experimental::static_set<int> set{cuco::experimental::extent<std::size_t>{400},
-                                          cuco::empty_key{-1}};
-
   thrust::device_vector<int> d_keys(num_keys);
-
   thrust::sequence(thrust::device, d_keys.begin(), d_keys.end());
 
-  auto const num_successes = set.insert(d_keys.begin(), d_keys.end());
+  SECTION("Size computation with default template parameters.")
+  {
+    cuco::experimental::static_set<int> set{cuco::experimental::extent<std::size_t>{400},
+                                            cuco::empty_key{-1}};
 
-  REQUIRE(set.size() == num_keys);
-  REQUIRE(num_successes == num_keys);
+    auto const num_successes = set.insert(d_keys.begin(), d_keys.end());
 
-  set.clear();
+    REQUIRE(set.size() == num_keys);
+    REQUIRE(num_successes == num_keys);
 
-  REQUIRE(set.size() == 0);
+    set.clear();
+
+    REQUIRE(set.size() == 0);
+  }
+
+  SECTION("Construction with plain integer should also work.")
+  {
+    auto myset = cuco::experimental::static_set<int>{400, cuco::empty_key{-1}};
+
+    auto const num_successes = myset.insert(d_keys.begin(), d_keys.end());
+
+    REQUIRE(myset.size() == num_keys);
+    REQUIRE(num_successes == num_keys);
+
+    myset.clear();
+
+    REQUIRE(myset.size() == 0);
+  }
 }

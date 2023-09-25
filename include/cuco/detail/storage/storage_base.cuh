@@ -16,6 +16,9 @@
 
 #pragma once
 
+#include <cuco/detail/traits.hpp>
+#include <cuco/extent.cuh>
+
 #include <cstddef>
 
 namespace cuco {
@@ -60,11 +63,15 @@ struct custom_deleter {
  *
  * @tparam Extent Type of extent denoting storage capacity
  */
-template <typename Extent>
+template <class Extent>
 class storage_base {
  public:
-  using extent_type = Extent;                            ///< Storage extent type
-  using size_type   = typename extent_type::value_type;  ///< Storage size type
+  using extent_type = Extent;  ///< Storage extent type
+  using size_type =
+    std::conditional_t<(cuco::detail::is_extent_v<extent_type> or
+                        cuco::experimental::detail::is_window_extent_v<extent_type>),
+                       typename extent_type::value_type,
+                       extent_type>;  ///< Size type
 
   /**
    * @brief Constructor of base storage.

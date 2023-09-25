@@ -47,7 +47,7 @@ class aow_storage_ref;
  * @tparam Extent Type of extent denoting number of windows
  * @tparam Allocator Type of allocator used for device storage (de)allocation
  */
-template <typename T, int32_t WindowSize, typename Extent, typename Allocator>
+template <typename T, int32_t WindowSize, class Extent, typename Allocator>
 class aow_storage : public detail::aow_storage_base<T, WindowSize, Extent> {
  public:
   using base_type = detail::aow_storage_base<T, WindowSize, Extent>;  ///< AoW base class type
@@ -134,7 +134,7 @@ class aow_storage : public detail::aow_storage_base<T, WindowSize, Extent> {
  * @tparam WindowSize Number of slots in each window
  * @tparam Extent Type of extent denoting storage capacity
  */
-template <typename T, int32_t WindowSize, typename Extent>
+template <typename T, int32_t WindowSize, class Extent>
 class aow_storage_ref : public detail::aow_storage_base<T, WindowSize, Extent> {
  public:
   using base_type = detail::aow_storage_base<T, WindowSize, Extent>;  ///< AoW base class type

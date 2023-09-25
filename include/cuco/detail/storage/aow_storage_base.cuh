@@ -47,7 +47,7 @@ struct window : public cuda::std::array<T, WindowSize> {
  * @tparam WindowSize Number of slots in each window
  * @tparam Extent Type of extent denoting the number of windows
  */
-template <typename T, int32_t WindowSize, typename Extent>
+template <typename T, int32_t WindowSize, class Extent>
 class aow_storage_base : public storage_base<Extent> {
  public:
   /**
