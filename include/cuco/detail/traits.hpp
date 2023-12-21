@@ -37,20 +37,6 @@ struct is_std_pair_like<T,
 };
 
 template <typename T, typename = void>
-struct is_cuda_std_pair_like : cuda::std::false_type {
-};
-
-template <typename T>
-struct is_cuda_std_pair_like<
-  T,
-  cuda::std::void_t<decltype(cuda::std::get<0>(cuda::std::declval<T>())),
-                    decltype(cuda::std::get<1>(cuda::std::declval<T>()))>>
-  : cuda::std::conditional_t<cuda::std::tuple_size<T>::value == 2,
-                             cuda::std::true_type,
-                             cuda::std::false_type> {
-};
-
-template <typename T, typename = void>
 struct is_thrust_pair_like_impl : cuda::std::false_type {
 };
 

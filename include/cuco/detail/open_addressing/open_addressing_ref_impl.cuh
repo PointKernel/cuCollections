@@ -1044,10 +1044,7 @@ class open_addressing_ref_impl {
   {
     if constexpr (this->has_payload and not cuda::std::is_same_v<T, value_type>) {
       using mapped_type = decltype(this->empty_slot_sentinel_.second);
-      if constexpr (cuco::detail::is_cuda_std_pair_like<T>::value) {
-        return cuco::pair{cuda::std::get<0>(value),
-                          static_cast<mapped_type>(cuda::std::get<1>(value))};
-      } else if constexpr (cuco::detail::is_thrust_pair_like<T>::value) {
+      if constexpr (cuco::detail::is_thrust_pair_like<T>::value) {
         return cuco::pair{thrust::get<0>(value), static_cast<mapped_type>(thrust::get<1>(value))};
       } else {
         // hail mary (convert using .first/.second members)
