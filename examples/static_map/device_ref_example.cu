@@ -16,6 +16,7 @@
 
 #include <cuco/static_map.cuh>
 
+#include <cuda/functional>
 #include <thrust/device_vector.h>
 #include <thrust/execution_policy.h>
 #include <thrust/iterator/zip_iterator.h>
@@ -39,6 +40,24 @@
  * performant way to do the example algorithm.
  *
  */
+
+using Key   = int;  ///< Key type
+using Value = int;  ///< Payload type
+
+/**
+ * @brief Predicate determines whether the given key is an even value or not
+ */
+struct is_even {
+  __device__ constexpr bool operator()(Key k) const noexcept { return k % 2 == 0; }
+};
+
+struct predicate {
+  template <typename T>
+  __device__ bool operator()(T tuple) const noexcept
+  {
+    return thrust::get<0>(tuple) + 1 == thrust::get<1>(tuple);
+  }
+};
 
 /**
  * @brief Inserts keys that pass the specified predicated into the map.
@@ -113,9 +132,6 @@ __global__ void increment_values(Map map_ref, KeyIter key_begin, std::size_t num
 
 int main(void)
 {
-  using Key   = int;
-  using Value = int;
-
   // Empty slots are represented by reserved "sentinel" values. These values should be selected such
   // that they never occur in your input data.
   Key constexpr empty_key_sentinel     = -1;
@@ -145,9 +161,6 @@ int main(void)
   // kernel
   auto insert_ref = map.ref(cuco::insert);
 
-  // Predicate will only insert even keys
-  auto is_even = [] __device__(auto key) { return (key % 2) == 0; };
-
   // Allocate storage for count of number of inserted keys
   thrust::device_vector<int> num_inserted(1);
 
@@ -157,7 +170,7 @@ int main(void)
                                              insert_keys.begin(),
                                              insert_values.begin(),
                                              num_keys,
-                                             is_even,
+                                             is_even{},
                                              num_inserted.data().get());
 
   std::cout << "Number of keys inserted: " << num_inserted[0] << std::endl;
@@ -176,10 +189,8 @@ int main(void)
   auto tuple_iter =
     thrust::make_zip_iterator(thrust::make_tuple(contained_keys.begin(), contained_values.begin()));
   // Iterate over all slot contents and verify that `slot.key + 1 == slot.value` is always true.
-  auto result = thrust::all_of(
-    thrust::device, tuple_iter, tuple_iter + num_inserted[0], [] __device__(auto const& tuple) {
-      return thrust::get<0>(tuple) + 1 == thrust::get<1>(tuple);
-    });
+  auto result =
+    thrust::all_of(thrust::device, tuple_iter, tuple_iter + num_inserted[0], predicate{});
 
   if (result) { std::cout << "Success! Target values are properly incremented.\n"; }
 

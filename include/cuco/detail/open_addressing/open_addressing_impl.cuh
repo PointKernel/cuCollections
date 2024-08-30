@@ -492,7 +492,7 @@ class open_addressing_impl {
   {
     auto const always_true = thrust::constant_iterator<bool>{true};
     this->contains_if_async(
-      first, last, always_true, thrust::identity{}, output_begin, container_ref, stream);
+      first, last, always_true, thrust::identity<bool>{}, output_begin, container_ref, stream);
   }
 
   /**
@@ -717,7 +717,7 @@ class open_addressing_impl {
       this->empty_key_sentinel(), this->erased_key_sentinel()};
 
     auto storage_ref = this->storage_ref();
-    auto const op    = [callback_op, is_filled, storage_ref] __device__(auto const window_slots) {
+    auto const op    = [callback_op, is_filled, storage_ref](auto const window_slots) {
       for (auto const slot : window_slots) {
         if (is_filled(slot)) { callback_op(slot); }
       }

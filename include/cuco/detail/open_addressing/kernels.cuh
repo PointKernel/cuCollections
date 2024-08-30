@@ -363,7 +363,7 @@ CUCO_KERNEL __launch_bounds__(BlockSize) void find(InputIt first,
     }
   }();
 
-  auto output = cuda::proclaim_return_type<output_type>([&] __device__(auto found) {
+  auto output = cuda::proclaim_return_type<output_type>([&](auto found) {
     if constexpr (has_payload) {
       return found == ref.end() ? sentinel : found->second;
     } else {
@@ -447,7 +447,7 @@ CUCO_KERNEL __launch_bounds__(BlockSize) void insert_and_find(InputIt first,
 
   auto constexpr has_payload = not std::is_same_v<typename Ref::key_type, typename Ref::value_type>;
 
-  auto output = cuda::proclaim_return_type<output_type>([&] __device__(auto found) {
+  auto output = cuda::proclaim_return_type<output_type>([&](auto found) {
     if constexpr (has_payload) {
       return found->second;
     } else {

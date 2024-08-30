@@ -28,6 +28,26 @@
 
 using size_type = std::size_t;
 
+template <typename Key, typename Value>
+struct make_pair {
+  __device__ cuco::pair<Key, Value> operator()(size_type i) const
+  {
+    return cuco::pair{Key{i}, Value{i % 2 + 1}};
+  }
+};
+
+template <typename Counter>
+struct count_even_keys {
+  count_even_keys(Counter* counter) : counter_{counter} {}
+  template <typename T>
+  __device__ void operator()(T const& slot) const
+  {
+    auto const [key, value] = slot;
+    if (((key % 2 == 0)) and (value == 1)) { counter_->fetch_add(1, cuda::memory_order_relaxed); }
+  }
+  Counter* counter_;
+};
+
 template <typename Map>
 void test_for_each(Map& map, size_type num_keys)
 {
@@ -37,12 +57,8 @@ void test_for_each(Map& map, size_type num_keys)
   REQUIRE(num_keys % 2 == 0);
 
   // Insert pairs
-  auto pairs_begin = thrust::make_transform_iterator(
-    thrust::counting_iterator<size_type>(0),
-    cuda::proclaim_return_type<cuco::pair<Key, Value>>([] __device__(auto i) {
-      // use payload as 1 for even keys and 2 for odd keys
-      return cuco::pair<Key, Value>{i, i % 2 + 1};
-    }));
+  auto pairs_begin = thrust::make_transform_iterator(thrust::counting_iterator<size_type>(0),
+                                                     make_pair<Key, Value>{});
 
   cuda::stream_ref stream{};
 
@@ -54,26 +70,17 @@ void test_for_each(Map& map, size_type num_keys)
   counter_storage.reset(stream);
 
   // count all the keys which are even and whose payload has value 1
-  map.for_each(
-    [counter = counter_storage.data()] __device__(auto const slot) {
-      auto const& [key, value] = slot;
-      if (((key % 2 == 0)) and (value == 1)) { counter->fetch_add(1, cuda::memory_order_relaxed); }
-    },
-    stream);
+  map.for_each(count_even_keys{counter_storage.data()}, stream);
 
   auto const res = counter_storage.load_to_host(stream);
   REQUIRE(res == num_keys / 2);
 
   counter_storage.reset(stream);
 
-  map.for_each(
-    thrust::counting_iterator<size_type>(0),
-    thrust::counting_iterator<size_type>(2 * num_keys),  // test for false-positives
-    [counter = counter_storage.data()] __device__(auto const slot) {
-      auto const& [key, value] = slot;
-      if (((key % 2 == 0)) and (value == 1)) { counter->fetch_add(1, cuda::memory_order_relaxed); }
-    },
-    stream);
+  map.for_each(thrust::counting_iterator<size_type>(0),
+               thrust::counting_iterator<size_type>(2 * num_keys),  // test for false-positives
+               count_even_keys{counter_storage.data()},
+               stream);
   REQUIRE(res == num_keys / 2);
 }
 

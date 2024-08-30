@@ -41,6 +41,17 @@ struct custom_value_type {
   __host__ __device__ custom_value_type(int32_t x) : f{x}, s{x} {}
 };
 
+struct make_key {
+  __device__ custom_key_type operator()(int32_t val) const { return custom_key_type{val}; }
+};
+
+struct make_pair {
+  __device__ cuco::pair<custom_key_type, custom_value_type> operator()(int32_t val) const
+  {
+    return cuco::pair{custom_key_type{val}, custom_value_type{val}};
+  }
+};
+
 // User-defined device hash callable
 struct custom_hash {
   __device__ uint32_t operator()(custom_key_type const& k) const noexcept { return k.a; };
@@ -63,10 +74,7 @@ int main(void)
   auto const empty_value_sentinel = custom_value_type{-1};
 
   // Create an iterator of input key/value pairs
-  auto pairs_begin = thrust::make_transform_iterator(
-    thrust::make_counting_iterator<int32_t>(0),
-    cuda::proclaim_return_type<cuco::pair<custom_key_type, custom_value_type>>(
-      [] __device__(auto i) { return cuco::pair{custom_key_type{i}, custom_value_type{i}}; }));
+  auto pairs_begin = thrust::make_transform_iterator(thrust::counting_iterator{0}, make_pair{});
 
   // Construct a map with 100,000 slots using the given empty key/value sentinels. Note the
   // capacity is chosen knowing we will insert 80,000 keys, for an load factor of 80%.
@@ -80,10 +88,7 @@ int main(void)
   map.insert(pairs_begin, pairs_begin + num_pairs);
 
   // Reproduce inserted keys
-  auto insert_keys =
-    thrust::make_transform_iterator(thrust::make_counting_iterator<int32_t>(0),
-                                    cuda::proclaim_return_type<custom_key_type>(
-                                      [] __device__(auto i) { return custom_key_type{i}; }));
+  auto insert_keys = thrust::make_transform_iterator(thrust::counting_iterator{0}, make_key{});
 
   thrust::device_vector<bool> contained(num_pairs);
 
@@ -95,7 +100,7 @@ int main(void)
 
   // All inserted keys are contained
   auto const all_contained =
-    thrust::all_of(contained.begin(), contained.end(), [] __device__(auto const& b) { return b; });
+    thrust::all_of(contained.begin(), contained.end(), thrust::identity<bool>{});
   if (all_contained) { std::cout << "Success! Found all values.\n"; }
 
   return 0;

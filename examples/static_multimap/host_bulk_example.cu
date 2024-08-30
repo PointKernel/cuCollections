@@ -16,6 +16,7 @@
 
 #include <cuco/static_multimap.cuh>
 
+#include <cuda/functional>
 #include <thrust/device_vector.h>
 #include <thrust/iterator/counting_iterator.h>
 #include <thrust/sequence.h>
@@ -23,15 +24,22 @@
 
 #include <limits>
 
+using key_type   = int;
+using value_type = int;
+
+constexpr std::size_t N = 50'000;
+
+struct make_pair {
+  __device__ cuco::pair<key_type, value_type> operator()(int32_t i) const
+  {
+    return cuco::pair<key_type, value_type>{i % (N / 2), i};
+  }
+};
+
 int main(void)
 {
-  using key_type   = int;
-  using value_type = int;
-
   key_type empty_key_sentinel     = -1;
   value_type empty_value_sentinel = -1;
-
-  constexpr std::size_t N = 50'000;
 
   // Constructs a multimap with 100,000 slots using -1 and -1 as the empty key/value
   // sentinels. Note the capacity is chosen knowing we will insert 50,000 keys,
@@ -43,11 +51,10 @@ int main(void)
 
   // Create a sequence of pairs. Eeach key has two matches.
   // E.g., {{0,0}, {1,1}, ... {0,25'000}, {1, 25'001}, ...}
-  thrust::transform(
-    thrust::make_counting_iterator<int>(0),
-    thrust::make_counting_iterator<int>(pairs.size()),
-    pairs.begin(),
-    [] __device__(auto i) { return cuco::pair<key_type, value_type>{i % (N / 2), i}; });
+  thrust::transform(thrust::make_counting_iterator<int>(0),
+                    thrust::make_counting_iterator<int>(pairs.size()),
+                    pairs.begin(),
+                    make_pair{});
 
   // Inserts all pairs into the map
   map.insert(pairs.begin(), pairs.end());

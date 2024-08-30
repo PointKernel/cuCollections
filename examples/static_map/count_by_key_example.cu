@@ -17,6 +17,7 @@
 #include <cuco/static_map.cuh>
 
 #include <cub/block/block_reduce.cuh>
+#include <cuda/functional>
 #include <cuda/std/atomic>
 #include <thrust/device_vector.h>
 #include <thrust/logical.h>
@@ -40,6 +41,28 @@
  * performant way to do the example algorithm.
  *
  */
+
+// Note that if (sizeof(Key)+sizeof(Count))>8 then the minimum required CUDA architecture is sm_70
+using Key   = uint32_t;  ///< Key type
+using Count = uint32_t;  ///< Payload type
+
+// Number of keys to be inserted
+auto constexpr num_keys = 50'000;
+// How often each distinct key occurs in the example input
+auto constexpr key_duplicates = 5;
+static_assert((num_keys % key_duplicates) == 0,
+              "For this example, num_keys must be divisible by key_duplicates in order to pass "
+              "the unit test.");
+
+/**
+ * @brief Functor to generate keys with the given integer value
+ */
+struct make_key {
+  __device__ Key operator()(int32_t i) const
+  {
+    return static_cast<Key>(i % (num_keys / key_duplicates));
+  }
+};
 
 /**
  * @brief Inserts keys and counts how often they occur in the input sequence.
@@ -93,30 +116,17 @@ __global__ void count_by_key(Map map_ref,
 
 int main(void)
 {
-  // Note that if (sizeof(Key)+sizeof(Count))>8 then the minimum required CUDA architecture is sm_70
-  using Key   = uint32_t;
-  using Count = uint32_t;
-
   // Empty slots are represented by reserved "sentinel" values. These values should be selected such
   // that they never occur in your input data.
   Key constexpr empty_key_sentinel     = static_cast<Key>(-1);
   Count constexpr empty_value_sentinel = static_cast<Count>(-1);
 
-  // Number of keys to be inserted
-  auto constexpr num_keys = 50'000;
-  // How often each distinct key occurs in the example input
-  auto constexpr key_duplicates = 5;
-  static_assert((num_keys % key_duplicates) == 0,
-                "For this example, num_keys must be divisible by key_duplicates in order to pass "
-                "the unit test.");
-
   thrust::device_vector<Key> insert_keys(num_keys);
   // Create a sequence of keys. Eeach distinct key has key_duplicates many matches.
-  thrust::transform(
-    thrust::make_counting_iterator<Key>(0),
-    thrust::make_counting_iterator<Key>(insert_keys.size()),
-    insert_keys.begin(),
-    [] __device__(auto i) { return static_cast<Key>(i % (num_keys / key_duplicates)); });
+  thrust::transform(thrust::make_counting_iterator<Key>(0),
+                    thrust::make_counting_iterator<Key>(insert_keys.size()),
+                    insert_keys.begin(),
+                    make_key{});
 
   // Allocate storage for count of number of unique keys
   thrust::device_vector<uint64_t> num_unique_keys(1);
@@ -154,9 +164,9 @@ int main(void)
 
   // Iterate over all result counts and verify that they are correct
   auto const counts_check = thrust::all_of(
-    result_counts.begin(), result_counts.end(), [] __host__ __device__(Count const count) {
-      return count == key_duplicates;
-    });
+    result_counts.begin(),
+    result_counts.end(),
+    cuda::proclaim_return_type<bool>([](Count const count) { return count == key_duplicates; }));
 
   if (num_keys_check and counts_check) { std::cout << "Success!\n"; }
 
