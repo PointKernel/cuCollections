@@ -204,22 +204,6 @@ class static_set_ref
   [[nodiscard]] __host__ __device__ constexpr auto probing_scheme() const noexcept;
 
   /**
-   * @brief Creates a reference with new operators from the current object
-   *
-   * @warning Using two or more reference objects to the same container but with
-   * a different operator set at the same time results in undefined behavior.
-   *
-   * @tparam NewOperators List of `cuco::op::*_tag` types
-   *
-   * @param ops List of operators, e.g., `cuco::insert`
-   *
-   * @return `*this` with `NewOperators...`
-   */
-  template <typename... NewOperators>
-  [[nodiscard]] __host__ __device__ constexpr auto with_operators(
-    NewOperators... ops) const noexcept;
-
-  /**
    * @brief Creates a copy of the current non-owning reference using the given operators
    *
    * @tparam NewOperators List of `cuco::op::*_tag` types
@@ -246,19 +230,6 @@ class static_set_ref
     NewKeyEqual const& key_equal) const noexcept;
 
   /**
-   * @brief Makes a copy of the current device reference with the given key comparator
-   *
-   * @tparam NewKeyEqual The new key equal type
-   *
-   * @param key_equal New key comparator
-   *
-   * @return Copy of the current device ref
-   */
-  template <typename NewKeyEqual>
-  [[nodiscard]] __host__ __device__ constexpr auto with_key_eq(
-    NewKeyEqual const& key_equal) const noexcept;
-
-  /**
    * @brief Makes a copy of the current device reference with the given hasher
    *
    * @tparam NewHash The new hasher type
@@ -269,18 +240,6 @@ class static_set_ref
    */
   template <typename NewHash>
   [[nodiscard]] __host__ __device__ constexpr auto rebind_hash_function(NewHash const& hash) const;
-
-  /**
-   * @brief Makes a copy of the current device reference with the given hasher
-   *
-   * @tparam NewHash The new hasher type
-   *
-   * @param hash New hasher
-   *
-   * @return Copy of the current device ref
-   */
-  template <typename NewHash>
-  [[nodiscard]] __host__ __device__ constexpr auto with_hash_function(NewHash const& hash) const;
 
   /**
    * @brief Makes a copy of the current device reference using non-owned memory
