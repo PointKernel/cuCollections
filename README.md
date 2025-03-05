@@ -1,4 +1,4 @@
-# cuCollections
+# cuCollectionss
 
 <table><tr>
 <th><b><a href="https://github.com/NVIDIA/cuCollections/tree/dev/examples">Examples</a></b></th>
