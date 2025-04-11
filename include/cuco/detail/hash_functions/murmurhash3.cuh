@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024, NVIDIA CORPORATION.
+ * Copyright (c) 2023-2025, NVIDIA CORPORATION.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@
 #pragma once
 
 #include <cuco/detail/hash_functions/utils.cuh>
-#include <cuco/extent.cuh>
 
 #include <cuda/std/array>
 #include <cuda/std/cstddef>
@@ -147,21 +146,18 @@ struct MurmurHash3_32 {
   constexpr result_type __host__ __device__ operator()(Key const& key) const noexcept
   {
     return compute_hash(reinterpret_cast<cuda::std::byte const*>(&key),
-                        cuco::extent<std::size_t, sizeof(Key)>{});
+                        static_cast<int32_t>(sizeof(Key)));
   }
 
   /**
    * @brief Returns a hash value for its argument, as a value of type `result_type`.
    *
-   * @tparam Extent The extent type
-   *
    * @param bytes The input argument to hash
-   * @param size The extent of the data in bytes
+   * @param size The size of the data in bytes
    * @return The resulting hash value
    */
-  template <typename Extent>
   constexpr result_type __host__ __device__ compute_hash(cuda::std::byte const* bytes,
-                                                         Extent size) const noexcept
+                                                         int32_t size) const noexcept
   {
     auto const nblocks = size / 4;
 
@@ -170,7 +166,7 @@ struct MurmurHash3_32 {
     constexpr std::uint32_t c2 = 0x1b873593;
     //----------
     // body
-    for (cuda::std::remove_const_t<decltype(nblocks)> i = 0; size >= 4 && i < nblocks; i++) {
+    for (int32_t i = 0; size >= 4 && i < nblocks; i++) {
       std::uint32_t k1 = load_chunk<std::uint32_t>(bytes, i);
       k1 *= c1;
       k1 = rotl32(k1, 15);
@@ -210,26 +206,29 @@ struct MurmurHash3_32 {
    * Users are encouraged to use the appropriate `cuda::std::byte` overload whenever possible for
    * better support and performance on the device.
    *
-   * @tparam Extent The extent type
-   *
    * @param bytes The input argument to hash
-   * @param size The extent of the data in bytes
+   * @param size The size of the data in bytes
    * @return The resulting hash value
    */
-  template <typename Extent>
   constexpr result_type __host__ __device__ compute_hash(std::byte const* bytes,
-                                                         Extent size) const noexcept
+                                                         int32_t size) const noexcept
   {
     return this->compute_hash(reinterpret_cast<cuda::std::byte const*>(bytes), size);
   }
 
  private:
-  constexpr __host__ __device__ std::uint32_t rotl32(std::uint32_t x, std::int8_t r) const noexcept
+  __host__ __device__ constexpr std::uint32_t fmix32(std::uint32_t h) const noexcept
   {
-    return (x << r) | (x >> (32 - r));
+    h ^= h >> 16;
+    h *= 0x85ebca6b;
+    h ^= h >> 13;
+    h *= 0xc2b2ae35;
+    h ^= h >> 16;
+    return h;
+    h ^= h >> 33;
+    return h;
   }
 
-  MurmurHash3_fmix32<std::uint32_t> fmix32_;
   std::uint32_t seed_;
 };
 
@@ -272,21 +271,18 @@ struct MurmurHash3_x64_128 {
   constexpr result_type __host__ __device__ operator()(Key const& key) const noexcept
   {
     return compute_hash(reinterpret_cast<cuda::std::byte const*>(&key),
-                        cuco::extent<std::size_t, sizeof(Key)>{});
+                        static_cast<int32_t>(sizeof(Key)));
   }
 
   /**
    * @brief Returns a hash value for its argument, as a value of type `result_type`.
    *
-   * @tparam Extent The extent type
-   *
    * @param bytes The input argument to hash
-   * @param size The extent of the data in bytes
+   * @param size The size of the data in bytes
    * @return The resulting hash value
    */
-  template <typename Extent>
   constexpr result_type __host__ __device__ compute_hash(cuda::std::byte const* bytes,
-                                                         Extent size) const noexcept
+                                                         int32_t size) const noexcept
   {
     constexpr std::uint32_t block_size = 16;
     auto const nblocks                 = size / block_size;
@@ -378,15 +374,12 @@ struct MurmurHash3_x64_128 {
    * Users are encouraged to use the appropriate `cuda::std::byte` overload whenever possible for
    * better support and performance on the device.
    *
-   * @tparam Extent The extent type
-   *
    * @param bytes The input argument to hash
-   * @param size The extent of the data in bytes
+   * @param size The size of the data in bytes
    * @return The resulting hash value
    */
-  template <typename Extent>
   constexpr result_type __host__ __device__ compute_hash(std::byte const* bytes,
-                                                         Extent size) const noexcept
+                                                         int32_t size) const noexcept
   {
     return this->compute_hash(reinterpret_cast<cuda::std::byte const*>(bytes), size);
   }
@@ -435,21 +428,18 @@ struct MurmurHash3_x86_128 {
   constexpr result_type __host__ __device__ operator()(Key const& key) const noexcept
   {
     return compute_hash(reinterpret_cast<cuda::std::byte const*>(&key),
-                        cuco::extent<std::size_t, sizeof(Key)>{});
+                        static_cast<int32_t>(sizeof(Key)));
   }
 
   /**
    * @brief Returns a hash value for its argument, as a value of type `result_type`.
    *
-   * @tparam Extent The extent type
-   *
    * @param bytes The input argument to hash
-   * @param size The extent of the data in bytes
+   * @param size The size of the data in bytes
    * @return The resulting hash value
    */
-  template <typename Extent>
   constexpr result_type __host__ __device__ compute_hash(cuda::std::byte const* bytes,
-                                                         Extent size) const noexcept
+                                                         int32_t size) const noexcept
   {
     constexpr std::uint32_t block_size = 16;
     auto const nblocks                 = size / block_size;
@@ -595,15 +585,12 @@ struct MurmurHash3_x86_128 {
    * Users are encouraged to use the appropriate `cuda::std::byte` overload whenever possible for
    * better support and performance on the device.
    *
-   * @tparam Extent The extent type
-   *
    * @param bytes The input argument to hash
-   * @param size The extent of the data in bytes
+   * @param size The size of the data in bytes
    * @return The resulting hash value
    */
-  template <typename Extent>
   constexpr result_type __host__ __device__ compute_hash(std::byte const* bytes,
-                                                         Extent size) const noexcept
+                                                         int32_t size) const noexcept
   {
     return this->compute_hash(reinterpret_cast<cuda::std::byte const*>(bytes), size);
   }
