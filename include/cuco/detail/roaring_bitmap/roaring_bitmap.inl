@@ -7,6 +7,8 @@
 
 #include <cuda/std/cstddef>
 #include <cuda/std/span>
+#include <cuda/std/type_traits>
+#include <cuda/std/utility>
 #include <cuda/stream_ref>
 
 namespace cuco::experimental {
@@ -25,6 +27,53 @@ roaring_bitmap<T, Allocator>::roaring_bitmap(cuda::std::byte const* bitmap,
                                              cuda::stream_ref stream)
   : storage_{bitmap, alloc, stream}
 {
+}
+
+template <class T, class Allocator>
+template <class InputIt,
+          class U,
+          cuda::std::enable_if_t<cuda::std::is_same_v<U, cuda::std::uint32_t>, int>>
+roaring_bitmap<T, Allocator>::roaring_bitmap(InputIt first,
+                                             InputIt last,
+                                             Allocator const& alloc,
+                                             cuda::stream_ref stream)
+  : storage_{detail::roaring_bitmap_builder<T, Allocator>{
+      nullptr, 0, first, last, allocator_type{alloc}, stream}}
+{
+  stream.sync();
+}
+
+template <class T, class Allocator>
+template <class InputIt,
+          class U,
+          cuda::std::enable_if_t<cuda::std::is_same_v<U, cuda::std::uint32_t>, int>>
+void roaring_bitmap<T, Allocator>::add(InputIt first, InputIt last, cuda::stream_ref stream)
+{
+  this->add_async(first, last, stream);
+  stream.sync();
+}
+
+template <class T, class Allocator>
+template <class InputIt,
+          class U,
+          cuda::std::enable_if_t<cuda::std::is_same_v<U, cuda::std::uint32_t>, int>>
+void roaring_bitmap<T, Allocator>::add_async(InputIt first, InputIt last, cuda::stream_ref stream)
+{
+  if (first == last) { return; }
+  auto const* staged_keys = storage_.staged_keys();
+  auto const old_ref      = storage_.ref();
+  auto builder =
+    staged_keys != nullptr
+      ? detail::roaring_bitmap_builder<T, Allocator>{staged_keys,
+                                                     storage_.staged_count(),
+                                                     first,
+                                                     last,
+                                                     storage_.allocator(),
+                                                     stream}
+      : detail::roaring_bitmap_builder<T, Allocator>{
+          old_ref.data(), old_ref.metadata(), first, last, storage_.allocator(), stream};
+  storage_.release_on(stream);
+  storage_ = storage_type{cuda::std::move(builder)};
 }
 
 template <class T, class Allocator>

@@ -11,6 +11,7 @@
 
 #include <cuda/std/cstddef>
 #include <cuda/std/span>
+#include <cuda/std/type_traits>
 #include <cuda/stream_ref>
 
 namespace cuco::experimental {
@@ -18,10 +19,10 @@ namespace cuco::experimental {
 /**
  * @brief GPU-accelerated container that owns a serialized Roaring bitmap.
  *
- * The `roaring_bitmap` provides host-side bulk membership queries over a bitmap stored in the
- * [Roaring bitmap format specification](https://github.com/RoaringBitmap/RoaringFormatSpec).
- * The serialized bytes are copied to device-accessible storage upon construction, and queries are
- * executed on the GPU.
+ * The `roaring_bitmap` provides host-side bulk operations over a bitmap stored in the [Roaring
+ * bitmap format specification](https://github.com/RoaringBitmap/RoaringFormatSpec). Serialized
+ * bytes can be copied to device-accessible storage, and 32-bit bitmaps can also be constructed and
+ * updated from device ranges on the GPU.
  *
  * In addition to bulk host APIs such as `contains`/`contains_async`, this container exposes a
  * non-owning reference object via `ref()` that can be used for device-side per-thread queries.
@@ -68,6 +69,28 @@ class roaring_bitmap {
                  cuda::stream_ref stream = cuda::stream_ref{cudaStream_t{nullptr}});
 
   /**
+   * @brief Constructs a 32-bit Roaring bitmap from keys in `[first, last)`.
+   *
+   * The input may be unsorted and contain duplicates. Construction executes on the GPU and emits
+   * a CRoaring-compatible portable representation. This function synchronizes `stream` before
+   * returning.
+   *
+   * @tparam InputIt Device-accessible random access input iterator of keys convertible to `T`
+   * @tparam U SFINAE helper; do not specify
+   * @param first Beginning of the sequence of keys
+   * @param last End of the sequence of keys
+   * @param alloc Allocator used to allocate device-accessible storage
+   * @param stream CUDA stream used for device memory operations and kernel launches
+   */
+  template <class InputIt,
+            class U                                                                   = T,
+            cuda::std::enable_if_t<cuda::std::is_same_v<U, cuda::std::uint32_t>, int> = 0>
+  roaring_bitmap(InputIt first,
+                 InputIt last,
+                 Allocator const& alloc  = {},
+                 cuda::stream_ref stream = cuda::stream_ref{cudaStream_t{nullptr}});
+
+  /**
    * @brief Copy constructor
    *
    * @param other The roaring_bitmap to copy from
@@ -98,6 +121,44 @@ class roaring_bitmap {
   roaring_bitmap& operator=(roaring_bitmap&& other) = default;
 
   ~roaring_bitmap() = default;  ///< Destructor
+
+  /**
+   * @brief Adds all keys in `[first, last)` by rebuilding the portable bitmap on the GPU.
+   *
+   * The input may be unsorted and contain duplicates. This function synchronizes `stream`. For
+   * asynchronous execution use `add_async`.
+   *
+   * @tparam InputIt Device-accessible random access input iterator of keys convertible to `T`
+   * @tparam U SFINAE helper; do not specify
+   * @param first Beginning of the sequence of keys
+   * @param last End of the sequence of keys
+   * @param stream CUDA stream used for device memory operations and kernel launches
+   */
+  template <class InputIt,
+            class U                                                                   = T,
+            cuda::std::enable_if_t<cuda::std::is_same_v<U, cuda::std::uint32_t>, int> = 0>
+  void add(InputIt first,
+           InputIt last,
+           cuda::stream_ref stream = cuda::stream_ref{cudaStream_t{nullptr}});
+
+  /**
+   * @brief Asynchronously adds all keys in `[first, last)` by rebuilding the portable bitmap.
+   *
+   * Later work on the same stream can immediately use the rebuilt bitmap. Host metadata observers
+   * such as `size()` require the stream to complete first.
+   *
+   * @tparam InputIt Device-accessible random access input iterator of keys convertible to `T`
+   * @tparam U SFINAE helper; do not specify
+   * @param first Beginning of the sequence of keys
+   * @param last End of the sequence of keys
+   * @param stream CUDA stream used for device memory operations and kernel launches
+   */
+  template <class InputIt,
+            class U                                                                   = T,
+            cuda::std::enable_if_t<cuda::std::is_same_v<U, cuda::std::uint32_t>, int> = 0>
+  void add_async(InputIt first,
+                 InputIt last,
+                 cuda::stream_ref stream = cuda::stream_ref{cudaStream_t{nullptr}});
 
   /**
    * @brief Bulk membership query for keys in `[first, last)`.

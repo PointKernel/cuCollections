@@ -66,7 +66,7 @@ class roaring_bitmap_impl<cuda::std::uint32_t> {
                                cuda::stream_ref stream = cuda::stream_ref{
                                  cudaStream_t{nullptr}}) const noexcept
   {
-    if (this->empty()) {
+    if (not storage_ref_.has_dynamic_metadata() and this->empty()) {
       cub::DeviceTransform::Transform(
         cuda::constant_iterator<bool>(false),
         contained,

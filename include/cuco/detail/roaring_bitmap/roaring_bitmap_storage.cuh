@@ -6,6 +6,7 @@
 #pragma once
 
 #include <cuco/detail/error.hpp>
+#include <cuco/detail/roaring_bitmap/roaring_bitmap_builder.cuh>
 #include <cuco/detail/roaring_bitmap/util.cuh>
 #include <cuco/detail/storage/storage_base.cuh>
 #include <cuco/detail/utility/memcpy_async.hpp>
@@ -18,6 +19,7 @@
 
 #include <memory>
 #include <nv/target>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -50,13 +52,27 @@ class roaring_bitmap_storage_ref<cuda::std::uint32_t> {
                                                  metadata_type const& metadata)
     : metadata_{metadata},
       data_{bitmap},
-      run_container_bitmap_{bitmap + metadata_.run_container_bitmap},
-      key_cards_{bitmap + metadata_.key_cards},
-      container_offsets_{metadata_.offsets_in_serialized_data
-                           ? (bitmap + metadata_.container_offsets)
-                           : reinterpret_cast<cuda::std::byte const*>(metadata_.computed_offsets)}
+      dynamic_metadata_host_{nullptr},
+      dynamic_metadata_{nullptr}
   {
     assert(metadata.valid);
+  }
+
+  /**
+   *  Constructs a reference to a stream-ordered, GPU-built bitmap
+   *
+   *  bitmap Pointer to the serialized bitmap in device-accessible memory
+   *  metadata Host metadata snapshot updated on the construction stream
+   *  dynamic_metadata Stream-ordered metadata in device memory
+   */
+  __host__ __device__ roaring_bitmap_storage_ref(cuda::std::byte const* bitmap,
+                                                 metadata_type const& metadata,
+                                                 metadata_type const* dynamic_metadata)
+    : metadata_{metadata},
+      data_{bitmap},
+      dynamic_metadata_host_{&metadata},
+      dynamic_metadata_{dynamic_metadata}
+  {
   }
 
   /**
@@ -76,7 +92,24 @@ class roaring_bitmap_storage_ref<cuda::std::uint32_t> {
    *
    * @return Reference to the bitmap metadata
    */
-  __host__ __device__ metadata_type const& metadata() const noexcept { return metadata_; }
+  __host__ __device__ metadata_type const& metadata() const noexcept
+  {
+#ifdef __CUDA_ARCH__
+    return dynamic_metadata_ == nullptr ? metadata_ : *dynamic_metadata_;
+#else
+    return dynamic_metadata_host_ == nullptr ? metadata_ : *dynamic_metadata_host_;
+#endif
+  }
+
+  /**
+   * @brief Indicates whether device metadata is published on a stream
+   *
+   * @return `true` for a GPU-built bitmap
+   */
+  [[nodiscard]] __host__ __device__ bool has_dynamic_metadata() const noexcept
+  {
+    return dynamic_metadata_ != nullptr;
+  }
 
   /**
    * @brief Returns pointer to the raw bitmap data
@@ -90,7 +123,10 @@ class roaring_bitmap_storage_ref<cuda::std::uint32_t> {
    *
    * @return Size of the bitmap data in bytes
    */
-  __host__ __device__ cuda::std::size_t size_bytes() const noexcept { return metadata_.size_bytes; }
+  __host__ __device__ cuda::std::size_t size_bytes() const noexcept
+  {
+    return this->metadata().size_bytes;
+  }
 
   /**
    * @brief Returns pointer to the run container bitmap
@@ -99,7 +135,7 @@ class roaring_bitmap_storage_ref<cuda::std::uint32_t> {
    */
   __host__ __device__ cuda::std::byte const* run_container_bitmap() const noexcept
   {
-    return run_container_bitmap_;
+    return data_ + this->metadata().run_container_bitmap;
   }
 
   /**
@@ -107,7 +143,10 @@ class roaring_bitmap_storage_ref<cuda::std::uint32_t> {
    *
    * @return Pointer to the key cardinalities data
    */
-  __host__ __device__ cuda::std::byte const* key_cards() const noexcept { return key_cards_; }
+  __host__ __device__ cuda::std::byte const* key_cards() const noexcept
+  {
+    return data_ + this->metadata().key_cards;
+  }
 
   /**
    * @brief Returns pointer to the container offsets data
@@ -116,15 +155,17 @@ class roaring_bitmap_storage_ref<cuda::std::uint32_t> {
    */
   __host__ __device__ cuda::std::byte const* container_offsets() const noexcept
   {
-    return container_offsets_;
+    auto const& metadata = this->metadata();
+    return metadata.offsets_in_serialized_data
+             ? data_ + metadata.container_offsets
+             : reinterpret_cast<cuda::std::byte const*>(metadata.computed_offsets);
   }
 
  private:
   metadata_type metadata_;
   cuda::std::byte const* data_;
-  cuda::std::byte const* run_container_bitmap_;
-  cuda::std::byte const* key_cards_;
-  cuda::std::byte const* container_offsets_;
+  metadata_type const* dynamic_metadata_host_;
+  metadata_type const* dynamic_metadata_;
 };
 
 /**
@@ -214,6 +255,13 @@ class roaring_bitmap_storage<cuda::std::uint32_t, Allocator> {
     typename std::allocator_traits<Allocator>::template rebind_alloc<cuda::std::byte>;
   /// Reference type for this storage
   using ref_type = roaring_bitmap_storage_ref<cuda::std::uint32_t>;
+  /// GPU construction implementation
+  using builder_type = roaring_bitmap_builder<cuda::std::uint32_t, Allocator>;
+  /// Sorted staging-key ownership type
+  using key_pointer_type = typename builder_type::key_pointer_type;
+  /// Dynamic metadata ownership type
+  using metadata_pointer_type      = typename builder_type::metadata_pointer_type;
+  using host_metadata_pointer_type = typename builder_type::host_metadata_pointer_type;
 
   /**
    * @brief Copy constructor
@@ -246,6 +294,23 @@ class roaring_bitmap_storage<cuda::std::uint32_t, Allocator> {
   roaring_bitmap_storage& operator=(roaring_bitmap_storage&& other) = default;
 
   ~roaring_bitmap_storage() = default;
+
+  /**
+   * @brief Adopts a bitmap built directly in device memory
+   *
+   * @param builder Completed stream-ordered GPU builder
+   */
+  explicit roaring_bitmap_storage(builder_type&& builder)
+    : allocator_{builder.allocator()},
+      metadata_{},
+      data_{builder.take_data()},
+      staged_keys_{builder.take_staged_keys()},
+      staged_count_{builder.staged_count()},
+      dynamic_metadata_{builder.take_dynamic_metadata()},
+      metadata_host_{builder.take_host_metadata()},
+      ref_{data_.get(), *metadata_host_, dynamic_metadata_->get()}
+  {
+  }
 
   /**
    * @brief Constructs storage by validating and copying bitmap data to device memory
@@ -296,11 +361,31 @@ class roaring_bitmap_storage<cuda::std::uint32_t, Allocator> {
    */
   ref_type ref() const noexcept { return ref_; }
 
+  [[nodiscard]] allocator_type allocator() const noexcept { return allocator_; }
+
+  [[nodiscard]] cuda::std::uint32_t const* staged_keys() const noexcept
+  {
+    return staged_keys_ ? staged_keys_->get() : nullptr;
+  }
+
+  [[nodiscard]] cuda::std::size_t staged_count() const noexcept { return staged_count_; }
+
+  void release_on(cuda::stream_ref stream) noexcept
+  {
+    data_.get_deleter().stream_ = stream;
+    if (staged_keys_) { staged_keys_->get_deleter().stream_ = stream; }
+    if (dynamic_metadata_) { dynamic_metadata_->get_deleter().stream_ = stream; }
+  }
+
  private:
   allocator_type allocator_;
   typename ref_type::metadata_type metadata_;
   std::unique_ptr<cuda::std::byte, cuco::detail::custom_deleter<cuda::std::size_t, allocator_type>>
     data_;
+  std::optional<key_pointer_type> staged_keys_{};
+  cuda::std::size_t staged_count_{};
+  std::optional<metadata_pointer_type> dynamic_metadata_{};
+  host_metadata_pointer_type metadata_host_{};
   ref_type ref_;
 };
 

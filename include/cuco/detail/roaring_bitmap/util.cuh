@@ -185,6 +185,8 @@ struct roaring_bitmap_metadata<cuda::std::uint32_t> {
   /// Whether container offsets are stored in the serialized data
   bool offsets_in_serialized_data = true;
 
+  roaring_bitmap_metadata() = default;
+
   /**
    * @brief Constructs metadata from a bounded serialized bitmap
    *
